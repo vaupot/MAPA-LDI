@@ -1,0 +1,1460 @@
+<!doctype html>
+<html lang="sl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Ljubljana — Digitalna mapa oseb</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Mammoth: reads .docx directly in the browser -->
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.9.0/mammoth.browser.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: rgba(255,255,255,.94);
+      --panel-solid: #ffffff;
+      --text: #101828;
+      --muted: #667085;
+      --line: rgba(16,24,40,.09);
+      --primary: #2563eb;
+      --primary-2: #1d4ed8;
+      --accent: #7c3aed;
+      --shadow: 0 18px 45px rgba(16,24,40,.12);
+      --soft-shadow: 0 8px 24px rgba(16,24,40,.08);
+      --map-filter: none;
+    }
+
+    body.dark {
+      --bg: #0b1020;
+      --panel: rgba(15,23,42,.94);
+      --panel-solid: #0f172a;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --line: rgba(255,255,255,.10);
+      --primary: #60a5fa;
+      --primary-2: #3b82f6;
+      --accent: #a78bfa;
+      --shadow: 0 18px 45px rgba(0,0,0,.35);
+      --soft-shadow: 0 8px 24px rgba(0,0,0,.25);
+      --map-filter: brightness(.78) contrast(1.12) saturate(.86);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) 1fr;
+      background: var(--bg);
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      height: 100vh;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand {
+      padding: 22px 20px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--primary);
+      font-weight: 800;
+      margin-bottom: 5px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .theme-btn {
+      width: 40px;
+      height: 40px;
+      flex: 0 0 40px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-solid);
+      color: var(--text);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .toolbar {
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .search-wrap {
+      position: relative;
+    }
+
+    .search {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      outline: none;
+      padding: 12px 42px 12px 14px;
+      background: var(--panel-solid);
+      color: var(--text);
+      box-shadow: inset 0 0 0 1px transparent;
+      transition: .2s ease;
+    }
+
+    .search:focus {
+      border-color: color-mix(in srgb, var(--primary) 60%, var(--line));
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 13%, transparent);
+    }
+
+    .search-icon {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      translate: 0 -50%;
+      color: var(--muted);
+      pointer-events: none;
+      font-size: 18px;
+    }
+
+    .toolbar-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 9px;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      min-height: 40px;
+      padding: 9px 11px;
+      background: var(--panel-solid);
+      color: var(--text);
+      transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .btn.primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .btn.primary:hover { background: var(--primary-2); }
+
+    .btn.small {
+      min-height: 34px;
+      font-size: 12px;
+      padding: 7px 10px;
+    }
+
+
+    .share-row { margin-top: 8px; }
+    .share-btn { width: 100%; font-weight: 800; }
+
+    .mobile-tip {
+      display: none;
+      position: absolute;
+      right: 16px;
+      top: 68px;
+      z-index: 900;
+      max-width: 260px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--line);
+      box-shadow: var(--soft-shadow);
+      font-size: 11px;
+      line-height: 1.35;
+      backdrop-filter: blur(12px);
+    }
+
+    .stats {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .people-list {
+      overflow: auto;
+      padding: 0 10px 16px;
+      scrollbar-width: thin;
+    }
+
+    .person {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      padding: 10px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      margin-bottom: 5px;
+      transition: .18s ease;
+    }
+
+    .person:hover {
+      background: color-mix(in srgb, var(--primary) 8%, transparent);
+      border-color: color-mix(in srgb, var(--primary) 16%, var(--line));
+    }
+
+    .avatar {
+      width: 38px;
+      height: 38px;
+      flex: 0 0 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: 900;
+      color: #fff;
+      box-shadow: 0 7px 15px rgba(37,99,235,.22);
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+    }
+
+    .person-copy {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .person-name {
+      font-size: 14px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .person-location {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .person-arrow {
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .empty {
+      padding: 28px 12px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .map-shell {
+      position: relative;
+      min-width: 0;
+      height: 100vh;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #d9dee7;
+    }
+
+    body.dark #map .leaflet-tile-pane {
+      filter: var(--map-filter);
+    }
+
+    .map-overlay {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      max-width: calc(100% - 32px);
+      pointer-events: none;
+    }
+
+    .map-badge {
+      pointer-events: auto;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 11px;
+      box-shadow: var(--soft-shadow);
+      backdrop-filter: blur(12px);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .reset-control {
+      border: 1px solid var(--line);
+      background: var(--panel-solid);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 11px;
+      box-shadow: var(--soft-shadow);
+      font-weight: 700;
+    }
+
+    .leaflet-control-zoom a {
+      color: var(--text) !important;
+      background: var(--panel-solid) !important;
+      border-color: var(--line) !important;
+    }
+
+    .person-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+      border: 3px solid rgba(255,255,255,.92);
+      box-shadow: 0 8px 18px rgba(15,23,42,.30);
+      transition: transform .18s ease;
+    }
+
+    .person-icon:hover { transform: scale(1.07); }
+
+    .popup {
+      min-width: 230px;
+    }
+
+    .popup-name {
+      font-size: 21px;
+      font-weight: 900;
+      letter-spacing: -.02em;
+      margin-bottom: 4px;
+    }
+
+    .popup-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-top: 12px;
+      margin-bottom: 4px;
+    }
+
+    .popup-location {
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--text);
+    }
+
+    .popup-source {
+      margin-top: 9px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .popup-btn {
+      width: 100%;
+      margin-top: 14px;
+      border: 0;
+      border-radius: 11px;
+      padding: 10px 11px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 800;
+    }
+
+    .popup-btn:hover { background: var(--primary-2); }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      background: rgba(2,6,23,.50);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      backdrop-filter: blur(5px);
+    }
+
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      width: min(560px, 100%);
+      max-height: min(680px, 92vh);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--panel-solid);
+      color: var(--text);
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 15px;
+      margin-bottom: 14px;
+    }
+
+    .modal-head h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .close-btn {
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text);
+    }
+
+    .dropzone {
+      border: 1.5px dashed color-mix(in srgb, var(--primary) 40%, var(--line));
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      background: color-mix(in srgb, var(--primary) 5%, transparent);
+      transition: .18s ease;
+    }
+
+    .dropzone.drag {
+      border-color: var(--primary);
+      background: color-mix(in srgb, var(--primary) 11%, transparent);
+    }
+
+    .dropzone strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 5px;
+    }
+
+    .dropzone span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input[type="file"] { display:none; }
+
+    .form {
+      display: grid;
+      gap: 11px;
+      margin-top: 18px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .field input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 12px;
+      background: var(--panel);
+      color: var(--text);
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: color-mix(in srgb, var(--primary) 60%, var(--line));
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+
+    .tiny {
+      margin-top: 12px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 2500;
+      max-width: min(420px, calc(100vw - 32px));
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      color: var(--text);
+      box-shadow: var(--shadow);
+      opacity: 0;
+      translate: 0 12px;
+      pointer-events: none;
+      transition: .2s ease;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .toast.show {
+      opacity: 1;
+      translate: 0 0;
+    }
+
+    .leaflet-popup-content-wrapper,
+    .leaflet-popup-tip {
+      background: var(--panel-solid);
+      color: var(--text);
+    }
+
+    .leaflet-container {
+      font: inherit;
+    }
+
+    .leaflet-popup-content {
+      margin: 15px 16px 14px;
+    }
+
+    .attribution-note {
+      position: absolute;
+      right: 12px;
+      bottom: 8px;
+      z-index: 800;
+      font-size: 10px;
+      color: rgba(17,24,39,.58);
+      background: rgba(255,255,255,.65);
+      border-radius: 6px;
+      padding: 2px 5px;
+      backdrop-filter: blur(5px);
+      pointer-events: none;
+    }
+
+    body.dark .attribution-note {
+      color: rgba(255,255,255,.65);
+      background: rgba(15,23,42,.65);
+    }
+
+    @media (max-width: 820px) {
+      body { overflow: hidden; }
+      .app {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+      }
+      .sidebar {
+        order: 1;
+        height: 43dvh;
+        max-height: none;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .map-shell {
+        order: 2;
+        flex: 1;
+        height: auto;
+        min-height: 57dvh;
+      }
+      .brand { padding: 13px 14px 10px; }
+      .brand h1 { font-size: 21px; }
+      .subtitle { display: none; }
+      .toolbar { padding: 9px 12px 8px; }
+      .stats { padding: 7px 12px; }
+      .people-list { padding: 0 7px 10px; }
+      .person { padding: 8px 9px; margin-bottom: 3px; }
+      .avatar { width: 34px; height: 34px; flex-basis: 34px; }
+      .map-overlay { top: 10px; left: 10px; max-width: calc(100% - 20px); }
+      .reset-control { padding: 8px 9px; }
+      .map-badge { padding: 7px 10px; }
+    }
+
+    @media (max-width: 480px) {
+      .toolbar-actions { grid-template-columns: 1fr 1fr; }
+      .btn { min-height: 38px; font-size: 12px; }
+      .person-name { font-size: 13px; }
+      .person-location { font-size: 11px; }
+      .theme-btn { width: 36px; height: 36px; flex-basis: 36px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <section class="brand">
+        <div class="brand-row">
+          <div>
+            <div class="eyebrow">Digitalna mapa</div>
+            <h1>Ljubljana · Osebe</h1>
+            <p class="subtitle">Interaktivni pregled imen in njihovih lokacij na zemljevidu Ljubljane.</p>
+          </div>
+          <button class="theme-btn" id="themeBtn" title="Preklopi temo" aria-label="Preklopi temo">◐</button>
+        </div>
+      </section>
+
+      <section class="toolbar">
+        <div class="search-wrap">
+          <input class="search" id="search" type="search" placeholder="Išči osebo po imenu …" autocomplete="off" />
+          <span class="search-icon">⌕</span>
+        </div>
+        <div class="toolbar-actions">
+          <button class="btn primary" id="addBtn">＋ Dodaj osebo</button>
+          <button class="btn" id="uploadBtn">↥ Uvozi .docx</button>
+        </div>
+        <div class="share-row">
+          <button class="btn share-btn" id="shareBtn">↗ Deli / Snapchat</button>
+        </div>
+        <input id="fileInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+      </section>
+
+      <div class="stats">
+        <span id="countLabel">0 oseb</span>
+        <span id="statusLabel">Pripravljeno</span>
+      </div>
+
+      <section class="people-list" id="peopleList" aria-live="polite"></section>
+    </aside>
+
+    <main class="map-shell">
+      <div id="map"></div>
+      <div class="map-overlay">
+        <div class="map-badge">Ljubljana</div>
+        <button class="reset-control" id="resetBtn">⌖ Ponastavi pogled</button>
+      </div>
+      <div class="mobile-tip" id="mobileTip">Na telefonu uporabi <b>Deli / Snapchat</b> in izberi Snapchat. Za prejemnike mora biti stran objavljena na javnem HTTPS naslovu.</div>
+      <div class="attribution-note">© OpenStreetMap · geokodiranje: Nominatim</div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow">Upravljanje podatkov</div>
+          <h2 id="modalTitle">Dodaj osebo</h2>
+        </div>
+        <button class="close-btn" id="closeModal">×</button>
+      </div>
+
+      <div class="dropzone" id="dropzone">
+        <strong>Spusti Word datoteko sem</strong>
+        <span>ali klikni za izbiro .docx datoteke</span>
+        <div style="margin-top:12px">
+          <button type="button" class="btn primary small" id="chooseFileBtn">Izberi datoteko</button>
+        </div>
+      </div>
+
+      <div class="form">
+        <div class="field">
+          <label for="nameInput">Ime in priimek</label>
+          <input id="nameInput" type="text" placeholder="npr. Janez Novak" />
+        </div>
+        <div class="field">
+          <label for="locationInput">Lokacija</label>
+          <input id="locationInput" type="text" placeholder="npr. Dunajska cesta 105" />
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn" id="cancelBtn">Prekliči</button>
+        <button class="btn primary" id="saveBtn">Dodaj na mapo</button>
+      </div>
+
+      <div class="tiny">
+        Word parser pričakuje vrstice v slogu <b>Ime – Lokacija</b>. Če je naslov nepopoln,
+        aplikacija poskusi lokacijo poiskati prek Nominatim v Ljubljani in po potrebi uporabi približno koordinato.
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ---------------------------------------------
+    // 1) Podatki iz priložene Word datoteke
+    // ---------------------------------------------
+    // Ti zapisi so bili izvlečeni iz datoteke "Stanovanja - lokacije.docx".
+    // Ko aplikacija uvozi drugo .docx datoteko, ta array zamenja z novimi podatki.
+    let people = [
+      { name: "Gal", location: "Černetova 17", query: "Černetova 17, Ljubljana, Slovenia", lat: 46.07, lng: 14.4869, geocodeSource: "približna koordinata" },
+      { name: "Staš", location: "Vrhovci cesta 17XVII št. 8 / Peričeva 17", query: "Vrhovci cesta 17XVII št. 8, Ljubljana, Slovenia", secondary: "Peričeva 17", lat: 46.0366, lng: 14.4557, geocodeSource: "približna koordinata" },
+      { name: "Tigo", location: "Dom 2 Rožna dolina", query: "Dom 2, Rožna dolina, Ljubljana, Slovenia", lat: 46.058, lng: 14.4805, geocodeSource: "približna koordinata" },
+      { name: "Matic", location: "Neubergerjeva 8", query: "Neubergerjeva 8, Ljubljana, Slovenia", lat: 46.08, lng: 14.5378, geocodeSource: "približna koordinata" },
+      { name: "Maks/Maksi", location: "Peričeva 17", query: "Peričeva 17, Ljubljana, Slovenia", lat: 46.0717, lng: 14.5154, geocodeSource: "približna koordinata" },
+      { name: "Yuri Jeromel", location: "Dom 3 Rožna dolina", query: "Dom 3, Rožna dolina, Ljubljana, Slovenia", lat: 46.0568, lng: 14.4822, geocodeSource: "približna koordinata" },
+      { name: "Jurij", location: "Jarnikova 5", query: "Jarnikova 5, Ljubljana, Slovenia", lat: 46.0478, lng: 14.516, geocodeSource: "približna koordinata" },
+      { name: "Alen", location: "Triglavska 36", query: "Triglavska 36, Ljubljana, Slovenia", lat: 46.0678, lng: 14.5245, geocodeSource: "približna koordinata" },
+      { name: "Urban", location: "Goriška ulica 69", query: "Goriška ulica 69, Ljubljana, Slovenia", lat: 46.0600, lng: 14.4925, geocodeSource: "približna koordinata" },
+      { name: "Arne", location: "Jamnikarjeva 57", query: "Jamnikarjeva 57, Ljubljana, Slovenia", lat: 46.0735, lng: 14.4630, geocodeSource: "približna koordinata" },
+      { name: "Matevž", location: "Strojeva ulica 28", query: "Strojeva ulica 28, Ljubljana, Slovenia", lat: 46.0635, lng: 14.4910, geocodeSource: "približna koordinata" }
+    ];
+
+    const SAMPLE_PEOPLE = [
+  {
+    "name": "Ana Kovač",
+    "location": "Študentski dom Rožna dolina"
+  },
+  {
+    "name": "Luka Novak",
+    "location": "Kardeljeva ploščad 5"
+  },
+  {
+    "name": "Nina Zupan",
+    "location": "Poljanska cesta 59"
+  },
+  {
+    "name": "Žan Horvat",
+    "location": "Trubarjeva cesta 47"
+  },
+  {
+    "name": "Eva Mlakar",
+    "location": "Krakovski nasip 10"
+  },
+  {
+    "name": "Filip Kralj",
+    "location": "Šišenska cesta 5"
+  },
+  {
+    "name": "Tjaša Vidmar",
+    "location": "Večna pot 113"
+  },
+  {
+    "name": "Miha Bizjak",
+    "location": "Dunajska cesta 105"
+  },
+  {
+    "name": "Sara Turk",
+    "location": "Glinškova ploščad 13"
+  },
+  {
+    "name": "Nik Prevc",
+    "location": "Metelkova ulica 7"
+  },
+  {
+    "name": "Lea Marin",
+    "location": "Mestni log 55"
+  },
+  {
+    "name": "Jaka Potočnik",
+    "location": "Topniška ulica 35"
+  },
+  {
+    "name": "Klara Kos",
+    "location": "Vojkova cesta 87"
+  },
+  {
+    "name": "Tim Škerjanc",
+    "location": "Roška cesta 2"
+  },
+  {
+    "name": "Maša Eržen",
+    "location": "Celovška cesta 111"
+  },
+  {
+    "name": "Rok Knez",
+    "location": "Litijska cesta 38"
+  },
+  {
+    "name": "Lana Rozman",
+    "location": "Cesta na Brdo 33"
+  },
+  {
+    "name": "David Krpan",
+    "location": "Gerbičeva ulica 51"
+  }
+];
+
+    const LJ_CENTER = [46.0569, 14.5058];
+    const LJ_ZOOM = 13;
+
+    // Približne varnostne kopije za znane ulice/preddele.
+    const FALLBACKS = {
+  "Černetova": [
+    46.07,
+    14.4869
+  ],
+  "Vrhovci": [
+    46.0366,
+    14.4557
+  ],
+  "Peričeva": [
+    46.0717,
+    14.5154
+  ],
+  "Dom 2": [
+    46.058,
+    14.4805
+  ],
+  "Rožna dolina": [
+    46.0568,
+    14.4822
+  ],
+  "Neubergerjeva": [
+    46.08,
+    14.5378
+  ],
+  "Jarnikova": [
+    46.0478,
+    14.516
+  ],
+  "Triglavska": [
+    46.0678,
+    14.5245
+  ],
+  "Kardeljeva": [
+    46.0718,
+    14.4918
+  ],
+  "Poljanska": [
+    46.0512,
+    14.5256
+  ],
+  "Trubarjeva": [
+    46.0536,
+    14.5142
+  ],
+  "Krakovski": [
+    46.0414,
+    14.5017
+  ],
+  "Šišenska": [
+    46.061,
+    14.4878
+  ],
+  "Večna pot": [
+    46.0642,
+    14.4726
+  ],
+  "Dunajska": [
+    46.0788,
+    14.5087
+  ],
+  "Glinškova": [
+    46.0757,
+    14.4944
+  ],
+  "Metelkova": [
+    46.0565,
+    14.5147
+  ],
+  "Mestni log": [
+    46.0314,
+    14.4896
+  ],
+  "Topniška": [
+    46.0743,
+    14.5209
+  ],
+  "Vojkova": [
+    46.077,
+    14.5109
+  ],
+  "Roška": [
+    46.0471,
+    14.5198
+  ],
+  "Celovška": [
+    46.0734,
+    14.487
+  ],
+  "Litijska": [
+    46.0477,
+    14.5455
+  ],
+  "Brdo": [
+    46.0392,
+    14.4576
+  ],
+  "Gerbičeva": [
+    46.0395,
+    14.4909
+  ]
+};
+
+    // ---------------------------------------------
+    // 2) Leaflet mapa
+    // ---------------------------------------------
+    const map = L.map('map', {
+      center: LJ_CENTER,
+      zoom: LJ_ZOOM,
+      zoomControl: true,
+      preferCanvas: true,
+      scrollWheelZoom: true
+    });
+
+    const tiles = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+      }
+    ).addTo(map);
+
+    const markerLayer = L.layerGroup().addTo(map);
+
+    // ---------------------------------------------
+    // 3) UI refs
+    // ---------------------------------------------
+    const searchEl = document.getElementById('search');
+    const listEl = document.getElementById('peopleList');
+    const countLabel = document.getElementById('countLabel');
+    const statusLabel = document.getElementById('statusLabel');
+    const themeBtn = document.getElementById('themeBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const addBtn = document.getElementById('addBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
+    const modalBackdrop = document.getElementById('modalBackdrop');
+    const closeModal = document.getElementById('closeModal');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const chooseFileBtn = document.getElementById('chooseFileBtn');
+    const dropzone = document.getElementById('dropzone');
+    const nameInput = document.getElementById('nameInput');
+    const locationInput = document.getElementById('locationInput');
+    const toastEl = document.getElementById('toast');
+    const shareBtn = document.getElementById('shareBtn');
+    const mobileTip = document.getElementById('mobileTip');
+
+    let markerById = new Map();
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function slug(value) {
+      return String(value)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    function initials(name) {
+      const parts = String(name).trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return '?';
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+
+    function colorFor(index) {
+      const hues = [215, 255, 165, 190, 285, 335, 135, 25, 45, 305];
+      const h = hues[index % hues.length];
+      return `hsl(${h} 78% 52%)`;
+    }
+
+    function fallbackFor(location) {
+      const text = String(location).toLowerCase();
+      const hit = Object.keys(FALLBACKS).find(k => text.includes(k.toLowerCase()));
+      return hit ? FALLBACKS[hit] : LJ_CENTER;
+    }
+
+    function normalizePerson(p, index) {
+      const name = String(p.name ?? '').trim();
+      const location = String(p.location ?? '').trim();
+      const [fallbackLat, fallbackLng] = fallbackFor(location);
+      return {
+        id: p.id || `${slug(name)}-${slug(location)}-${index}`,
+        name,
+        location,
+        query: p.query || `${location}, Ljubljana, Slovenia`,
+        secondary: p.secondary || '',
+        lat: Number.isFinite(Number(p.lat)) ? Number(p.lat) : fallbackLat,
+        lng: Number.isFinite(Number(p.lng)) ? Number(p.lng) : fallbackLng,
+        geocodeSource: p.geocodeSource || 'približna koordinata',
+        geocoded: Boolean(p.geocoded)
+      };
+    }
+
+    people = people.map(normalizePerson);
+
+    function showToast(message) {
+      toastEl.textContent = message;
+      toastEl.classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toastEl.classList.remove('show'), 3000);
+    }
+
+    function setStatus(text) {
+      statusLabel.textContent = text;
+    }
+
+    // ---------------------------------------------
+    // 4) Render sidebar + markers
+    // ---------------------------------------------
+    function popupHtml(person) {
+      const extra = person.secondary
+        ? `<div class="popup-label">Dodatna lokacija</div><div class="popup-location">${escapeHtml(person.secondary)}</div>`
+        : '';
+
+      return `
+        <div class="popup">
+          <div class="popup-name">${escapeHtml(person.name)}</div>
+          <div class="popup-label">Lokacija</div>
+          <div class="popup-location">${escapeHtml(person.location)}</div>
+          ${extra}
+          <div class="popup-source">${escapeHtml(person.geocodeSource || 'lokacija')}</div>
+          <button class="popup-btn" type="button" onclick="focusPerson('${person.id}')">
+            Osredotoči se na to lokacijo
+          </button>
+        </div>
+      `;
+    }
+
+    function buildMarker(person, index) {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="person-icon" style="background:${colorFor(index)}">${escapeHtml(initials(person.name))}</div>`,
+        iconSize: [42, 42],
+        iconAnchor: [21, 21],
+        popupAnchor: [0, -22]
+      });
+
+      const marker = L.marker([person.lat, person.lng], {
+        icon,
+        riseOnHover: true,
+        keyboard: true,
+        title: person.name
+      });
+
+      marker.bindPopup(popupHtml(person), {
+        maxWidth: 320,
+        closeButton: true,
+        autoPan: true
+      });
+
+      marker.on('click', () => {
+        map.panTo(marker.getLatLng(), {animate: true, duration: .45});
+      });
+
+      markerLayer.addLayer(marker);
+      markerById.set(person.id, marker);
+    }
+
+    function render() {
+      markerLayer.clearLayers();
+      markerById = new Map();
+
+      const q = searchEl.value.trim().toLowerCase();
+      const filtered = people.filter(p =>
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.location.toLowerCase().includes(q)
+      );
+
+      listEl.innerHTML = '';
+
+      if (!filtered.length) {
+        listEl.innerHTML = `<div class="empty">Ni zadetkov za <b>${escapeHtml(q)}</b>.</div>`;
+      }
+
+      filtered.forEach((person) => {
+        const index = people.indexOf(person);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'person';
+        button.innerHTML = `
+          <div class="avatar" style="background:${colorFor(index)}">${escapeHtml(initials(person.name))}</div>
+          <div class="person-copy">
+            <div class="person-name">${escapeHtml(person.name)}</div>
+            <div class="person-location">${escapeHtml(person.location)}</div>
+          </div>
+          <div class="person-arrow">›</div>
+        `;
+        button.addEventListener('click', () => focusPerson(person.id));
+        listEl.appendChild(button);
+
+        buildMarker(person, index);
+      });
+
+      countLabel.textContent = `${filtered.length} / ${people.length} oseb`;
+      setStatus(filtered.length ? 'Prikazano' : 'Ni zadetkov');
+    }
+
+    window.focusPerson = function(id) {
+      const person = people.find(p => p.id === id);
+      const marker = markerById.get(id);
+      if (!person || !marker) return;
+
+      map.flyTo([person.lat, person.lng], Math.max(map.getZoom(), 16), {
+        animate: true,
+        duration: 0.9
+      });
+
+      setTimeout(() => marker.openPopup(), 450);
+    };
+
+    resetBtn.addEventListener('click', () => {
+      map.flyTo(LJ_CENTER, LJ_ZOOM, {animate:true, duration:.8});
+    });
+
+    searchEl.addEventListener('input', render);
+
+    // ---------------------------------------------
+    // 5) Deljenje
+    // ---------------------------------------------
+    shareBtn.addEventListener('click', async () => {
+      const shareData = {
+        title: 'Ljubljana · Osebe',
+        text: 'Digitalna mapa oseb in lokacij v Ljubljani',
+        url: window.location.href.startsWith('file:') ? '' : window.location.href
+      };
+
+      if (window.location.protocol === 'file:') {
+        mobileTip.style.display = 'block';
+        setTimeout(() => mobileTip.style.display = 'none', 7000);
+        showToast('Za Snapchat potrebuješ javni HTTPS link do te HTML strani.');
+        return;
+      }
+
+      try {
+        if (navigator.share) {
+          await navigator.share(shareData);
+          return;
+        }
+        await navigator.clipboard.writeText(window.location.href);
+        showToast('Link kopiran. Prilepi ga v Snapchat.');
+      } catch (err) {
+        if (err?.name !== 'AbortError') showToast('Deljenje ni uspelo. Link lahko kopiraš iz naslovne vrstice.');
+      }
+    });
+
+    // ---------------------------------------------
+    // 6) Tema
+    // ---------------------------------------------
+    const savedTheme = localStorage.getItem('lj-map-theme');
+    if (savedTheme === 'dark') document.body.classList.add('dark');
+
+    themeBtn.addEventListener('click', () => {
+      document.body.classList.toggle('dark');
+      localStorage.setItem(
+        'lj-map-theme',
+        document.body.classList.contains('dark') ? 'dark' : 'light'
+      );
+      themeBtn.textContent = document.body.classList.contains('dark') ? '☀' : '◐';
+    });
+
+    themeBtn.textContent = document.body.classList.contains('dark') ? '☀' : '◐';
+
+    // ---------------------------------------------
+    // 6) Modal + dodajanje
+    // ---------------------------------------------
+    function openModal() {
+      modalBackdrop.classList.add('open');
+      setTimeout(() => nameInput.focus(), 50);
+    }
+
+    function closeModalFn() {
+      modalBackdrop.classList.remove('open');
+      nameInput.value = '';
+      locationInput.value = '';
+    }
+
+    addBtn.addEventListener('click', openModal);
+    closeModal.addEventListener('click', closeModalFn);
+    cancelBtn.addEventListener('click', closeModalFn);
+    modalBackdrop.addEventListener('click', (e) => {
+      if (e.target === modalBackdrop) closeModalFn();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modalBackdrop.classList.contains('open')) closeModalFn();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      const name = nameInput.value.trim();
+      const location = locationInput.value.trim();
+
+      if (!name || !location) {
+        showToast('Izpolni ime in lokacijo.');
+        return;
+      }
+
+      const [lat, lng] = fallbackFor(location);
+      const person = {
+        id: `${slug(name)}-${slug(location)}-${Date.now()}`,
+        name,
+        location,
+        query: `${location}, Ljubljana, Slovenia`,
+        lat,
+        lng,
+        geocodeSource: 'približna koordinata',
+        geocoded: false
+      };
+
+      people.push(person);
+      closeModalFn();
+      render();
+      focusPerson(person.id);
+      showToast('Oseba dodana. Poskušam natančno geokodirati lokacijo …');
+
+      await geocodePerson(person);
+      render();
+      focusPerson(person.id);
+    });
+
+    // ---------------------------------------------
+    // 7) DOCX parser
+    // ---------------------------------------------
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    chooseFileBtn.addEventListener('click', () => fileInput.click());
+
+    dropzone.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      fileInput.click();
+    });
+
+    ['dragenter','dragover'].forEach(type => dropzone.addEventListener(type, e => {
+      e.preventDefault();
+      dropzone.classList.add('drag');
+    }));
+    ['dragleave','drop'].forEach(type => dropzone.addEventListener(type, e => {
+      e.preventDefault();
+      dropzone.classList.remove('drag');
+    }));
+    dropzone.addEventListener('drop', e => {
+      const file = e.dataTransfer.files?.[0];
+      if (file) importDocx(file);
+    });
+
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files?.[0];
+      if (file) importDocx(file);
+      fileInput.value = '';
+    });
+
+    function parsePeopleText(text) {
+      const lines = String(text)
+        .split(/\r?\n/)
+        .map(s => s.replace(/[\t ]+/g, ' ').trim())
+        .filter(Boolean);
+
+      const result = [];
+
+      for (const line of lines) {
+        // Main separator: en dash/em dash, then fallback to a spaced hyphen.
+        const parts = line.split(/\s*[–—]\s*|\s+-\s+/);
+        if (parts.length < 2) continue;
+
+        const name = parts.shift().trim();
+        const location = parts.join(' - ').trim();
+
+        if (!name || !location) continue;
+        result.push({
+          name,
+          location,
+          query: `${location.split('/')[0].trim()}, Ljubljana, Slovenia`
+        });
+      }
+
+      return result;
+    }
+
+    async function importDocx(file) {
+      if (!/\.docx$/i.test(file.name)) {
+        showToast('Izberi Word .docx datoteko.');
+        return;
+      }
+
+      if (typeof mammoth === 'undefined') {
+        showToast('Mammoth.js se ni naložil. Preveri internetno povezavo.');
+        return;
+      }
+
+      setStatus('Berem Word …');
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({arrayBuffer});
+        const parsed = parsePeopleText(result.value);
+
+        if (!parsed.length) {
+          showToast('V Word datoteki nisem našel vrstic v obliki “Ime – Lokacija”.');
+          setStatus('Brez podatkov');
+          return;
+        }
+
+        people = parsed.map(normalizePerson);
+        searchEl.value = '';
+        render();
+
+        // Center on all current points.
+        fitPeopleToMap();
+        showToast(`Uvoženih oseb: ${people.length}. Geokodiram lokacije …`);
+
+        await geocodeAllPeople();
+        render();
+        fitPeopleToMap();
+      } catch (err) {
+        console.error(err);
+        showToast('Branje Word datoteke ni uspelo.');
+        setStatus('Napaka');
+      }
+    }
+
+    // ---------------------------------------------
+    // 8) Geokodiranje: Nominatim + fallback
+    // ---------------------------------------------
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function geocodeQuery(query) {
+      const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=si&' +
+                  'q=' + encodeURIComponent(query);
+
+      const response = await fetch(url, {
+        headers: {
+          'Accept-Language': 'sl,en'
+        }
+      });
+
+      if (!response.ok) throw new Error(`Geocoding HTTP ${response.status}`);
+      const data = await response.json();
+
+      if (!Array.isArray(data) || !data.length) return null;
+
+      const lat = Number(data[0].lat);
+      const lng = Number(data[0].lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+      // Keep results constrained to the Ljubljana vicinity.
+      if (lat < 45.95 || lat > 46.15 || lng < 14.35 || lng > 14.65) return null;
+
+      return {lat, lng, displayName: data[0].display_name || ''};
+    }
+
+    async function geocodePerson(person) {
+      try {
+        const found = await geocodeQuery(person.query);
+        if (found) {
+          person.lat = found.lat;
+          person.lng = found.lng;
+          person.geocodeSource = 'geokodirano prek Nominatim';
+          person.geocoded = true;
+          return true;
+        }
+      } catch (err) {
+        console.warn('Geokodiranje ni uspelo:', person.query, err);
+      }
+
+      // Fallback was already assigned during normalization.
+      person.geocodeSource = 'približna koordinata (geokodiranje ni našlo zadetka)';
+      person.geocoded = false;
+      return false;
+    }
+
+    async function geocodeAllPeople() {
+      for (let i = 0; i < people.length; i++) {
+        setStatus(`Geokodiram ${i+1}/${people.length} …`);
+        await geocodePerson(people[i]);
+        // Respectful delay for the public geocoder.
+        if (i < people.length - 1) await sleep(1050);
+      }
+      setStatus('Geokodiranje končano');
+    }
+
+    async function geocodeMissingOnStartup() {
+      // Initial records contain approximate coordinates so markers show immediately.
+      // Try to improve precision one-by-one.
+      for (let i = 0; i < people.length; i++) {
+        const p = people[i];
+        if (p.geocoded) continue;
+        setStatus(`Preverjam lokacije ${i+1}/${people.length} …`);
+        await geocodePerson(p);
+        if (i < people.length - 1) await sleep(1050);
+      }
+      setStatus('Pripravljeno');
+      render();
+    }
+
+    function fitPeopleToMap() {
+      if (!people.length) {
+        map.flyTo(LJ_CENTER, LJ_ZOOM, {animate:true, duration:.7});
+        return;
+      }
+
+      const bounds = L.latLngBounds(people.map(p => [p.lat, p.lng]));
+      if (bounds.isValid()) {
+        map.flyToBounds(bounds.pad(.22), {
+          animate:true,
+          duration:.8,
+          maxZoom: 15
+        });
+      }
+    }
+
+    // ---------------------------------------------
+    // 9) Zagon
+    // ---------------------------------------------
+    render();
+    setTimeout(() => geocodeMissingOnStartup(), 350);
+  </script>
+</body>
+</html>
